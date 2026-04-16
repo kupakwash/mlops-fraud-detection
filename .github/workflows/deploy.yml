@@ -85,6 +85,7 @@ jobs:
             --registry-username ${{ secrets.ACR_USERNAME }} \
             --registry-password ${{ secrets.ACR_PASSWORD }} \
             --location ${{ env.LOCATION }} \
+            --os-type Linux \
             --cpu 1 \
             --memory 1.5 \
             --ports 8000 \
