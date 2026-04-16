@@ -49,7 +49,7 @@ def detect_drift(baseline_df: pd.DataFrame, current_df: pd.DataFrame,
         if col not in current_df.columns:
             continue
         ks_stat, p_value = stats.ks_2samp(baseline_df[col], current_df[col])
-        drifted = p_value < threshold_p
+        drifted = bool(p_value < threshold_p)
         results[col] = {
             "ks_statistic": round(float(ks_stat), 4),
             "p_value": round(float(p_value), 4),

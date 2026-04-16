@@ -41,18 +41,26 @@ def register(params: dict) -> None:
     mlflow.set_tracking_uri(mlp["tracking_uri"])
     client = MlflowClient()
 
-    # Find the most recent run with a logged model
+    # Find the most recent training run that has a logged model artifact
     experiment = client.get_experiment_by_name(mlp["experiment_name"])
     runs = client.search_runs(
         experiment_ids=[experiment.experiment_id],
-        filter_string="",
+        filter_string="tags.mlflow.runName = 'xgboost_fraud_v1'",
         order_by=["start_time DESC"],
         max_results=1
     )
 
     if not runs:
-        log.error("No MLflow runs found. Run train.py first.")
-        sys.exit(1)
+        # Fallback: find any run with a logged model
+        all_runs = client.search_runs(
+            experiment_ids=[experiment.experiment_id],
+            order_by=["start_time DESC"],
+            max_results=20
+        )
+        runs = [r for r in all_runs if r.data.tags.get("mlflow.log-model.history")]
+        if not runs:
+            log.error("No MLflow training runs with logged models found. Run train.py first.")
+            sys.exit(1)
 
     run_id = runs[0].info.run_id
     model_uri = f"runs:/{run_id}/model"
