@@ -92,9 +92,11 @@ class TestModuleImports:
         from src.pipeline.preprocess import preprocess, load_params  # noqa: F401
 
     def test_train_imports(self):
+        pytest.importorskip("mlflow", reason="mlflow not installed — skipping train module import")
         from src.pipeline.train import train, load_params  # noqa: F401
 
     def test_evaluate_imports(self):
+        pytest.importorskip("mlflow", reason="mlflow not installed — skipping evaluate module import")
         from src.pipeline.evaluate import evaluate, load_params  # noqa: F401
 
     def test_monitor_imports(self):
