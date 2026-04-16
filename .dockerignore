@@ -1,0 +1,56 @@
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Raw and processed data (too large, not needed at inference time)
+data/
+
+# DVC internals
+.dvc/
+
+# MLflow runs and artifacts
+mlruns/
+mlartifacts/
+
+# Git
+.git/
+.github/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Notebooks and reports (not needed in container)
+notebooks/
+reports/
+
+# Source pipeline scripts (not needed at inference time)
+src/
+
+# Tests
+tests/
+
+# Logs
+logs/
+
+# Secrets and config
+.env
+*.pem
+*.key
+azure_credentials.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

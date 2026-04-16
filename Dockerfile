@@ -1,5 +1,5 @@
 # ── Base image ────────────────────────────────────────────────────
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 # ── Metadata ──────────────────────────────────────────────────────
 LABEL maintainer="Kupakwashe T. Mapuranga"
@@ -20,16 +20,16 @@ COPY requirements.txt .
 # ── Install Python dependencies ───────────────────────────────────
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir \
-        pandas==2.1.4 \
-        numpy==1.26.2 \
-        scikit-learn==1.4.0 \
-        xgboost==2.0.3 \
-        joblib==1.3.2 \
-        fastapi==0.109.0 \
-        uvicorn==0.27.0 \
-        pydantic==2.5.3 \
-        pyyaml==6.0.1 \
-        python-dotenv==1.0.0
+        pandas==2.2.3 \
+        numpy==2.4.4 \
+        scikit-learn==1.8.0 \
+        xgboost==3.2.0 \
+        joblib==1.5.3 \
+        fastapi==0.135.3 \
+        uvicorn==0.44.0 \
+        pydantic==2.13.1 \
+        pyyaml==6.0.3 \
+        python-dotenv==1.2.2
 
 # ── Copy application files ────────────────────────────────────────
 COPY app.py .

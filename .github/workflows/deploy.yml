@@ -1,0 +1,122 @@
+name: Build and Deploy to Azure ACI
+
+# Trigger: push touching app/model/Dockerfile, OR manually from Actions tab
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'app.py'
+      - 'Dockerfile'
+      - 'models/fraud_model.pkl'
+      - 'models/scaler.pkl'
+      - 'params.yaml'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+env:
+  ACR_LOGIN_SERVER: kupakfraudacr.azurecr.io
+  IMAGE_NAME: fraud-detection-api
+  IMAGE_TAG: v1
+  RESOURCE_GROUP: mlops-rg
+  CONTAINER_NAME: fraud-api
+  DNS_LABEL: fraud-detection-kupak
+  LOCATION: southeastasia
+
+jobs:
+  build-and-deploy:
+    name: Build → Push to ACR → Deploy to ACI
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── Docker build (GitHub Actions runner has Docker pre-installed) ──
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
+            -t ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest \
+            .
+          echo "Image built successfully"
+          docker images | grep fraud
+
+      # ── Push to Azure Container Registry ──────────────────────────────
+      - name: Login to ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Push image to ACR
+        run: |
+          docker push ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          docker push ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
+          echo "Image pushed to ${{ env.ACR_LOGIN_SERVER }}"
+
+      # ── Azure login using service principal ───────────────────────────
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: |
+            {
+              "clientId": "${{ secrets.AZURE_CLIENT_ID }}",
+              "clientSecret": "${{ secrets.AZURE_CLIENT_SECRET }}",
+              "subscriptionId": "${{ secrets.AZURE_SUBSCRIPTION_ID }}",
+              "tenantId": "${{ secrets.AZURE_TENANT_ID }}"
+            }
+
+      # ── Deploy to Azure Container Instances ───────────────────────────
+      - name: Delete existing container (if present)
+        run: |
+          az container delete \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ env.CONTAINER_NAME }} \
+            --yes 2>/dev/null || echo "No existing container to delete"
+
+      - name: Deploy to Azure Container Instances
+        run: |
+          az container create \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ env.CONTAINER_NAME }} \
+            --image ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
+            --registry-login-server ${{ env.ACR_LOGIN_SERVER }} \
+            --registry-username ${{ secrets.ACR_USERNAME }} \
+            --registry-password ${{ secrets.ACR_PASSWORD }} \
+            --location ${{ env.LOCATION }} \
+            --cpu 1 \
+            --memory 1.5 \
+            --ports 8000 \
+            --dns-name-label ${{ env.DNS_LABEL }} \
+            --environment-variables MODEL_VERSION=1 PYTHONUNBUFFERED=1 \
+            --restart-policy Always \
+            --output table
+
+      # ── Get URL and health check ───────────────────────────────────────
+      - name: Get live URL and test health endpoint
+        run: |
+          FQDN=$(az container show \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ env.CONTAINER_NAME }} \
+            --query ipAddress.fqdn --output tsv)
+
+          echo ""
+          echo "============================================"
+          echo "  DEPLOYMENT COMPLETE"
+          echo "============================================"
+          echo "  Live URL : http://$FQDN:8000"
+          echo "  API Docs : http://$FQDN:8000/docs"
+          echo "  Health   : http://$FQDN:8000/health"
+          echo "  Predict  : POST http://$FQDN:8000/predict"
+          echo "============================================"
+
+          echo "Waiting 45s for container to initialise..."
+          sleep 45
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://$FQDN:8000/health" || echo "000")
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "Health check PASSED (HTTP $HTTP_STATUS)"
+            curl -s "http://$FQDN:8000/health" | python3 -m json.tool
+          else
+            echo "Container still starting (HTTP $HTTP_STATUS) — check http://$FQDN:8000/health in a minute"
+          fi

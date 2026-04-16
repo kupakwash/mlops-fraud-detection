@@ -7,7 +7,11 @@ data/processed/
 !*.dvc
 
 # ── Models ────────────────────────────────────────────────────────
+# Allow the trained model and scaler — small enough to commit (~750 KB)
+# and required for Docker image builds in CI/CD
 models/*.pkl
+!models/fraud_model.pkl
+!models/scaler.pkl
 models/*.joblib
 
 # ── MLflow ────────────────────────────────────────────────────────
