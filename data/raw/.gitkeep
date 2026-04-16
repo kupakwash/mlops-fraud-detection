@@ -1,0 +1,3 @@
+# This file keeps the data/raw/ directory in git.
+# The actual dataset is tracked by DVC, not git.
+# Run: dvc pull    to download creditcard.csv

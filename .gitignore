@@ -1,7 +1,10 @@
 # ── Data (tracked by DVC, not git) ───────────────────────────────
-data/raw/
+# Ignore actual data files but allow .dvc pointer files
+data/raw/*.csv
+data/raw/*.parquet
 data/processed/
 *.csv
+!*.dvc
 
 # ── Models ────────────────────────────────────────────────────────
 models/*.pkl
