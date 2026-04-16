@@ -52,10 +52,13 @@ jobs:
 
   # ── Job 3: Full ML Pipeline ────────────────────────────────────────────────
   train:
-    name: ML Pipeline (dvc repro)
+    name: ML Pipeline (ingest → train → evaluate)
     runs-on: ubuntu-latest
     needs: test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    env:
+      MLFLOW_TRACKING_URI: ./mlruns
+
     steps:
       - uses: actions/checkout@v4
 
@@ -72,22 +75,27 @@ jobs:
                       scipy matplotlib seaborn
 
       - name: Configure DVC Azure remote credentials
-        env:
-          AZURE_STORAGE_ACCOUNT_NAME: ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}
-          AZURE_STORAGE_ACCOUNT_KEY: ${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}
         run: |
-          dvc remote modify --local myremote account_name "$AZURE_STORAGE_ACCOUNT_NAME"
-          dvc remote modify --local myremote account_key "$AZURE_STORAGE_ACCOUNT_KEY"
+          dvc remote modify myremote account_name "${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}"
+          dvc remote modify myremote account_key "${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}"
 
       - name: Pull dataset from Azure Blob Storage
         run: dvc pull
 
-      - name: Run full ML pipeline
-        env:
-          MLFLOW_TRACKING_URI: ./mlruns
-        run: dvc repro
+      - name: Stage 1 — Ingest
+        run: python src/pipeline/ingest.py
+
+      - name: Stage 2 — Preprocess
+        run: python src/pipeline/preprocess.py
+
+      - name: Stage 3 — Train
+        run: python src/pipeline/train.py
+
+      - name: Stage 4 — Evaluate
+        run: python src/pipeline/evaluate.py
 
       - name: Upload pipeline outputs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: pipeline-outputs
