@@ -9,18 +9,14 @@ Stage 4 — Model Evaluation
 import json
 import logging
 import sys
-import yaml
+
 import joblib
-import numpy as np
-import pandas as pd
 import mlflow
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+import pandas as pd
+import yaml
 from sklearn.metrics import (
     roc_auc_score, f1_score, precision_score,
     recall_score, confusion_matrix, classification_report,
-    RocCurveDisplay
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [EVALUATE] %(message)s")

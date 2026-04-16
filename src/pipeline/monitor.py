@@ -9,7 +9,6 @@ import os
 import json
 import logging
 import yaml
-import numpy as np
 import pandas as pd
 from scipy import stats
 from datetime import datetime
