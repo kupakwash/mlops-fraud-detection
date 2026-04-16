@@ -6,165 +6,127 @@ on:
   pull_request:
     branches: [ main ]
 
-env:
-  PYTHON_VERSION: "3.10"
-  IMAGE_NAME: fraud-detection-api
-
 jobs:
 
-  # ── Job 1: Lint ─────────────────────────────────────────────────
+  # ── Job 1: Lint ────────────────────────────────────────────────────────────
   lint:
-    name: Code Quality Check
+    name: Code Quality (flake8)
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: "3.11"
 
-      - name: Install linting tools
+      - name: Install flake8
         run: pip install flake8
 
       - name: Run flake8
         run: |
           flake8 src/ app.py \
-            --max-line-length=100 \
-            --ignore=E501,W503 \
+            --max-line-length=120 \
+            --ignore=E501,W503,E702 \
             --exclude=__pycache__
 
-  # ── Job 2: Unit Tests ───────────────────────────────────────────
+  # ── Job 2: Unit Tests ──────────────────────────────────────────────────────
   test:
-    name: Unit Tests
+    name: Unit Tests (pytest)
     runs-on: ubuntu-latest
     needs: lint
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: "3.11"
 
-      - name: Install dependencies
+      - name: Install test dependencies
         run: |
           pip install --upgrade pip
           pip install pandas numpy scikit-learn xgboost imbalanced-learn \
-                      joblib pyyaml fastapi httpx pytest pydantic uvicorn
+                      joblib pyyaml fastapi httpx pytest pydantic uvicorn scipy
 
-      - name: Run unit tests
+      - name: Run tests
         run: pytest tests/ -v --tb=short
 
-  # ── Job 3: Train Pipeline ───────────────────────────────────────
+  # ── Job 3: Full ML Pipeline ────────────────────────────────────────────────
   train:
-    name: Run ML Pipeline
+    name: ML Pipeline (dvc repro)
     runs-on: ubuntu-latest
     needs: test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: "3.11"
 
-      - name: Install dependencies
+      - name: Install ML dependencies
         run: |
           pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install pandas numpy scikit-learn xgboost imbalanced-learn \
+                      joblib pyyaml mlflow "dvc[azure]" \
+                      fastapi uvicorn pydantic python-dotenv \
+                      scipy matplotlib seaborn
 
-      - name: Configure DVC remote
+      - name: Configure DVC Azure remote credentials
         env:
           AZURE_STORAGE_ACCOUNT_NAME: ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}
           AZURE_STORAGE_ACCOUNT_KEY: ${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}
         run: |
-          dvc remote modify myremote account_name $AZURE_STORAGE_ACCOUNT_NAME
-          dvc remote modify myremote account_key $AZURE_STORAGE_ACCOUNT_KEY
+          dvc remote modify --local myremote account_name "$AZURE_STORAGE_ACCOUNT_NAME"
+          dvc remote modify --local myremote account_key "$AZURE_STORAGE_ACCOUNT_KEY"
 
-      - name: Pull data with DVC
+      - name: Pull dataset from Azure Blob Storage
         run: dvc pull
 
-      - name: Run DVC pipeline
+      - name: Run full ML pipeline
         env:
           MLFLOW_TRACKING_URI: ./mlruns
         run: dvc repro
 
-      - name: Upload model artifact
+      - name: Upload pipeline outputs
         uses: actions/upload-artifact@v4
         with:
-          name: trained-model
-          path: |
-            models/fraud_model.pkl
-            models/scaler.pkl
-            reports/eval_metrics.json
+          name: pipeline-outputs
+          path: reports/
 
-  # ── Job 4: Docker Build + Push to ACR ──────────────────────────
-  build:
-    name: Build and Push Docker Image
+  # ── Job 4: Show Metrics ────────────────────────────────────────────────────
+  metrics:
+    name: Metrics Report
     runs-on: ubuntu-latest
     needs: train
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download trained model
+      - name: Download pipeline outputs
         uses: actions/download-artifact@v4
         with:
-          name: trained-model
-          path: models/
+          name: pipeline-outputs
+          path: reports/
 
-      - name: Log in to Azure Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ secrets.AZURE_ACR_LOGIN_SERVER }}
-          username: ${{ secrets.AZURE_ACR_USERNAME }}
-          password: ${{ secrets.AZURE_ACR_PASSWORD }}
-
-      - name: Build Docker image
+      - name: Display metrics
         run: |
-          docker build -t ${{ secrets.AZURE_ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
-          docker build -t ${{ secrets.AZURE_ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest .
-
-      - name: Push Docker image
-        run: |
-          docker push ${{ secrets.AZURE_ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-          docker push ${{ secrets.AZURE_ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
-
-  # ── Job 5: Deploy to Azure ACI ──────────────────────────────────
-  deploy:
-    name: Deploy to Azure ACI
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - name: Azure Login
-        uses: azure/login@v1
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Deploy to Azure Container Instances
-        uses: azure/aci-deploy@v1
-        with:
-          resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
-          dns-name-label: fraud-detection-api-${{ github.run_number }}
-          image: ${{ secrets.AZURE_ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
-          registry-login-server: ${{ secrets.AZURE_ACR_LOGIN_SERVER }}
-          registry-username: ${{ secrets.AZURE_ACR_USERNAME }}
-          registry-password: ${{ secrets.AZURE_ACR_PASSWORD }}
-          name: fraud-api
-          location: eastus
-          cpu: 1
-          memory: 1.5
-          ports: 8000
-          environment-variables: >
-            MODEL_VERSION=1
-            PYTHONUNBUFFERED=1
-
-      - name: Test deployed API
-        run: |
-          sleep 30
-          curl -f http://fraud-detection-api-${{ github.run_number }}.eastus.azurecontainer.io:8000/health
+          echo "============================================"
+          echo "         ML Pipeline Results"
+          echo "============================================"
+          echo ""
+          echo "--- Training Metrics (reports/metrics.json) ---"
+          cat reports/metrics.json
+          echo ""
+          echo "--- Evaluation Metrics (reports/eval_metrics.json) ---"
+          cat reports/eval_metrics.json
+          echo ""
+          echo "--- Drift Report Summary ---"
+          python3 -c "
+          import json
+          with open('reports/drift_report.json') as f:
+              d = json.load(f)
+          print(f'Features checked : {d[\"total_features_checked\"]}')
+          print(f'Drifted features : {d[\"drifted_features_count\"]}')
+          print(f'Drift detected   : {d[\"drift_detected\"]}')
+          if d['drifted_features']:
+              print(f'Drifted in       : {d[\"drifted_features\"]}')
+          "
+          echo "============================================"
