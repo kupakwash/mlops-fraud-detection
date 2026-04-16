@@ -80,7 +80,7 @@ jobs:
           dvc remote modify myremote account_key "${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}"
 
       - name: Pull dataset from Azure Blob Storage
-        run: dvc pull
+        run: dvc pull data/raw/creditcard.csv
 
       - name: Stage 1 — Ingest
         run: python src/pipeline/ingest.py
