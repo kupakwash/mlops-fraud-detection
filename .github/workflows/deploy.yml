@@ -16,10 +16,10 @@ on:
 env:
   ACR_LOGIN_SERVER: kupakfraudacr.azurecr.io
   IMAGE_NAME: fraud-detection-api
-  IMAGE_TAG: v1
+  IMAGE_TAG: v2
   RESOURCE_GROUP: mlops-rg
   CONTAINER_NAME: fraud-api
-  DNS_LABEL: fraud-detection-kupak
+  DNS_LABEL: fraud-detection-kupak4
   LOCATION: southeastasia
 
 jobs:
