@@ -1,0 +1,13 @@
+# DVC ignore file
+# Patterns here are ignored by DVC when scanning for changes
+
+.git
+.github
+venv/
+.venv/
+__pycache__/
+*.pyc
+.env
+*.ipynb_checkpoints
+mlruns/
+logs/

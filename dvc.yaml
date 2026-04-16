@@ -1,0 +1,73 @@
+stages:
+
+  ingest:
+    cmd: python src/pipeline/ingest.py
+    deps:
+      - src/pipeline/ingest.py
+      - data/raw/creditcard.csv
+    params:
+      - data.test_size
+      - data.random_state
+    outs:
+      - data/processed/X_train.csv
+      - data/processed/X_test.csv
+      - data/processed/y_train.csv
+      - data/processed/y_test.csv
+
+  preprocess:
+    cmd: python src/pipeline/preprocess.py
+    deps:
+      - src/pipeline/preprocess.py
+      - data/processed/X_train.csv
+      - data/processed/X_test.csv
+      - data/processed/y_train.csv
+    params:
+      - preprocess.scale_features
+      - preprocess.smote_random_state
+    outs:
+      - data/processed/X_train_scaled.csv
+      - data/processed/X_test_scaled.csv
+      - data/processed/y_train_resampled.csv
+      - models/scaler.pkl
+
+  train:
+    cmd: python src/pipeline/train.py
+    deps:
+      - src/pipeline/train.py
+      - data/processed/X_train_scaled.csv
+      - data/processed/y_train_resampled.csv
+    params:
+      - model
+      - mlflow
+    outs:
+      - models/fraud_model.pkl
+    metrics:
+      - reports/metrics.json:
+          cache: false
+
+  evaluate:
+    cmd: python src/pipeline/evaluate.py
+    deps:
+      - src/pipeline/evaluate.py
+      - models/fraud_model.pkl
+      - models/scaler.pkl
+      - data/processed/X_test_scaled.csv
+      - data/processed/y_test.csv
+    params:
+      - evaluate.threshold
+    metrics:
+      - reports/eval_metrics.json:
+          cache: false
+    plots:
+      - reports/confusion_matrix.json:
+          cache: false
+
+  register:
+    cmd: python src/pipeline/register.py
+    deps:
+      - src/pipeline/register.py
+      - models/fraud_model.pkl
+      - reports/eval_metrics.json
+    params:
+      - mlflow.model_name
+      - evaluate.min_auc_roc

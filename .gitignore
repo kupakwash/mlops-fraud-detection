@@ -1,0 +1,49 @@
+# ── Data (tracked by DVC, not git) ───────────────────────────────
+data/raw/
+data/processed/
+*.csv
+
+# ── Models ────────────────────────────────────────────────────────
+models/*.pkl
+models/*.joblib
+
+# ── MLflow ────────────────────────────────────────────────────────
+mlruns/
+mlartifacts/
+
+# ── Python ────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# ── Virtual environments ──────────────────────────────────────────
+venv/
+.venv/
+env/
+
+# ── Environment secrets ───────────────────────────────────────────
+.env
+*.pem
+*.key
+azure_credentials.json
+
+# ── Logs ──────────────────────────────────────────────────────────
+logs/*.log
+
+# ── Jupyter ───────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# ── OS ────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── IDE ───────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp

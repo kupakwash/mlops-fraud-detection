@@ -1,0 +1,170 @@
+name: MLOps CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  PYTHON_VERSION: "3.10"
+  IMAGE_NAME: fraud-detection-api
+
+jobs:
+
+  # ── Job 1: Lint ─────────────────────────────────────────────────
+  lint:
+    name: Code Quality Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install linting tools
+        run: pip install flake8
+
+      - name: Run flake8
+        run: |
+          flake8 src/ app.py \
+            --max-line-length=100 \
+            --ignore=E501,W503 \
+            --exclude=__pycache__
+
+  # ── Job 2: Unit Tests ───────────────────────────────────────────
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pandas numpy scikit-learn xgboost imbalanced-learn \
+                      joblib pyyaml fastapi httpx pytest pydantic uvicorn
+
+      - name: Run unit tests
+        run: pytest tests/ -v --tb=short
+
+  # ── Job 3: Train Pipeline ───────────────────────────────────────
+  train:
+    name: Run ML Pipeline
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Configure DVC remote
+        env:
+          AZURE_STORAGE_ACCOUNT_NAME: ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}
+          AZURE_STORAGE_ACCOUNT_KEY: ${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}
+        run: |
+          dvc remote modify myremote account_name $AZURE_STORAGE_ACCOUNT_NAME
+          dvc remote modify myremote account_key $AZURE_STORAGE_ACCOUNT_KEY
+
+      - name: Pull data with DVC
+        run: dvc pull
+
+      - name: Run DVC pipeline
+        env:
+          MLFLOW_TRACKING_URI: ./mlruns
+        run: dvc repro
+
+      - name: Upload model artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trained-model
+          path: |
+            models/fraud_model.pkl
+            models/scaler.pkl
+            reports/eval_metrics.json
+
+  # ── Job 4: Docker Build + Push to ACR ──────────────────────────
+  build:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    needs: train
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download trained model
+        uses: actions/download-artifact@v4
+        with:
+          name: trained-model
+          path: models/
+
+      - name: Log in to Azure Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.AZURE_ACR_LOGIN_SERVER }}
+          username: ${{ secrets.AZURE_ACR_USERNAME }}
+          password: ${{ secrets.AZURE_ACR_PASSWORD }}
+
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ secrets.AZURE_ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
+          docker build -t ${{ secrets.AZURE_ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest .
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ secrets.AZURE_ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker push ${{ secrets.AZURE_ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
+
+  # ── Job 5: Deploy to Azure ACI ──────────────────────────────────
+  deploy:
+    name: Deploy to Azure ACI
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to Azure Container Instances
+        uses: azure/aci-deploy@v1
+        with:
+          resource-group: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          dns-name-label: fraud-detection-api-${{ github.run_number }}
+          image: ${{ secrets.AZURE_ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
+          registry-login-server: ${{ secrets.AZURE_ACR_LOGIN_SERVER }}
+          registry-username: ${{ secrets.AZURE_ACR_USERNAME }}
+          registry-password: ${{ secrets.AZURE_ACR_PASSWORD }}
+          name: fraud-api
+          location: eastus
+          cpu: 1
+          memory: 1.5
+          ports: 8000
+          environment-variables: >
+            MODEL_VERSION=1
+            PYTHONUNBUFFERED=1
+
+      - name: Test deployed API
+        run: |
+          sleep 30
+          curl -f http://fraud-detection-api-${{ github.run_number }}.eastus.azurecontainer.io:8000/health

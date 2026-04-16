@@ -1,0 +1,2 @@
+# Prediction logs are written here at runtime by app.py.
+# This directory is excluded from git tracking (.gitignore).
