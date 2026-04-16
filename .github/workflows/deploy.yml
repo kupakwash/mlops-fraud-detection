@@ -16,10 +16,10 @@ on:
 env:
   ACR_LOGIN_SERVER: kupakfraudacr.azurecr.io
   IMAGE_NAME: fraud-detection-api
-  IMAGE_TAG: v2
+  IMAGE_TAG: v3
   RESOURCE_GROUP: mlops-rg
   CONTAINER_NAME: fraud-api
-  DNS_LABEL: fraud-detection-kupak4
+  DNS_LABEL: fraud-detection-kupak6
   LOCATION: southeastasia
 
 jobs:
@@ -88,9 +88,9 @@ jobs:
             --os-type Linux \
             --cpu 1 \
             --memory 1.5 \
-            --ports 8000 \
+            --ports 80 \
             --dns-name-label ${{ env.DNS_LABEL }} \
-            --environment-variables MODEL_VERSION=1 PYTHONUNBUFFERED=1 \
+            --environment-variables MODEL_VERSION=3 PYTHONUNBUFFERED=1 \
             --restart-policy Always \
             --output table
 
@@ -106,18 +106,18 @@ jobs:
           echo "============================================"
           echo "  DEPLOYMENT COMPLETE"
           echo "============================================"
-          echo "  Live URL : http://$FQDN:8000"
-          echo "  API Docs : http://$FQDN:8000/docs"
-          echo "  Health   : http://$FQDN:8000/health"
-          echo "  Predict  : POST http://$FQDN:8000/predict"
+          echo "  Live URL : http://$FQDN"
+          echo "  API Docs : http://$FQDN/docs"
+          echo "  Health   : http://$FQDN/health"
+          echo "  Predict  : POST http://$FQDN/predict"
           echo "============================================"
 
           echo "Waiting 45s for container to initialise..."
           sleep 45
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://$FQDN:8000/health" || echo "000")
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://$FQDN/health" || echo "000")
           if [ "$HTTP_STATUS" = "200" ]; then
             echo "Health check PASSED (HTTP $HTTP_STATUS)"
-            curl -s "http://$FQDN:8000/health" | python3 -m json.tool
+            curl -s "http://$FQDN/health" | python3 -m json.tool
           else
             echo "Container still starting (HTTP $HTTP_STATUS) — check http://$FQDN:8000/health in a minute"
           fi
